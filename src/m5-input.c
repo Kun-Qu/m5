@@ -17,62 +17,6 @@ typedef enum {
         M5_END_ESCAPE
 } M5InputStatus;
 
-static GString *
-m5_get_tail_spaces (gchar *text)
-{
-        gint i = g_utf8_strlen (text, -1) - 1;
-        if (i < 0)
-                return NULL;
-        
-        GString *spaces = g_string_new (NULL);
-        gchar *substr;              
-        while (1) {
-                substr = g_utf8_substring (text, i--, i+1);
-                if (g_str_equal (substr, " ")
-                    || g_str_equal (substr, "\t")) {
-                        g_string_append (spaces, substr);
-                        g_free (substr);
-                } else {
-                        break;
-                }
-        }
-        return spaces;
-}
-
-static GString *
-m5_input_search_and_replace (M5Token *t, M5Token *r)
-{
-        GString *text = t->content;
-
-        gchar *a = r->name->str;
-        gchar *b = r->signature->str;
-
-        gchar **splited_text = g_strsplit (text->str, a, 0);
-        GString *new_text = g_string_new (NULL);
-
-        if (r->head_spaces) {
-                g_error ("One macro should not be used multi-times!\n");
-        }
-        
-        gint i;
-        for (i = 0; splited_text[i] != NULL; i++) {
-                if (splited_text[i+1] != NULL) {
-                        g_string_append (new_text, splited_text[i]);
-                        g_string_append (new_text, b);
-                        r->head_spaces = m5_get_tail_spaces (splited_text[i]);
-                } else {
-                        g_string_append (new_text, splited_text[i]);
-                }
-        }
-        
-        if (i == 1)
-                return NULL;
-        else if (i > 2)
-                g_error ("one macro can not be used twice in the same macro!\n");
-        else
-                return new_text;
-}
-
 static M5InputStatus
 m5_parser_status (GString *cache,
                   M5InputStatus current_status,
@@ -204,6 +148,7 @@ m5_input_create_macro_according_head (GString *cache, gchar *head)
         return content;
 }
 
+
 GList *
 m5_input_split (gchar *filename)
 {
@@ -234,7 +179,8 @@ m5_input_split (gchar *filename)
                                 if (!content) {
                                         content = m5_input_create_macro_according_head (cache, "\\_^{");
                                 }
-                                contents = g_list_prepend (contents, content);
+                                if (content)
+                                        contents = g_list_prepend (contents, content);
                         } else if (m == M5_END_MACRO) {/* 分离宏文本 */
                                 content = g_slice_new (M5Content);
                                 content->type = M5_MACRO_TEXT;
@@ -258,7 +204,7 @@ m5_input_split (gchar *filename)
         g_io_channel_unref (channel);
         
         contents = g_list_reverse (contents);
-                
+        
         return contents;
 }
 
@@ -372,6 +318,69 @@ m5_input_merge_same_macro (GList *contents)
         }
         
         return macro_set;
+}
+
+static GString *
+m5_get_tail_spaces (gchar *text)
+{
+        gint i = g_utf8_strlen (text, -1) - 1;
+        if (i < 0)
+                return NULL;
+        
+        GString *spaces = g_string_new (NULL);
+        gchar *substr;              
+        while (1) {
+                substr = g_utf8_substring (text, i--, i+1);
+                if (g_str_equal (substr, " ")
+                    || g_str_equal (substr, "\t")) {
+                        g_string_append (spaces, substr);
+                        g_free (substr);
+                } else {
+                        break;
+                }
+        }
+        return spaces;
+}
+
+
+
+static GString *
+m5_input_search_and_replace (M5Token *t, M5Token *r)
+{
+        GString *text = t->content;
+
+        gchar *a = r->name->str;
+        gchar *b = r->signature->str;
+
+        gchar **splited_text = g_strsplit (text->str, a, 0);
+        GString *new_text = g_string_new (NULL);
+
+        if (r->head_spaces) {
+                g_error ("One macro should not be used multi-times!\n");
+        }
+        
+        gint i;
+        for (i = 0; splited_text[i] != NULL; i++) {
+                if (splited_text[i+1] != NULL) {
+                        g_string_append (new_text, splited_text[i]);
+                        g_string_append (new_text, b);
+                        r->head_spaces = m5_get_tail_spaces (splited_text[i]);
+                } else {
+                        /* 有可能会是带参数的宏，m5 允许宏名与左括号之间有空格，
+                           而 m4 不允许，所以要删除左括号前的空格 */
+                        splited_text[i] =  g_strchug (splited_text[i]);
+                        g_string_append (new_text, splited_text[i]);
+                }
+        }
+        
+        g_strfreev (splited_text);
+        
+        if (i == 1)
+                return NULL;
+        else if (i > 2)
+                g_error ("one macro can not be used twice in the same macro!\n");
+        else
+                return new_text;
 }
 
 static void
