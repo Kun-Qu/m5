@@ -20,9 +20,12 @@ typedef enum {
 static GString *
 m5_get_tail_spaces (gchar *text)
 {
-        GString *spaces = g_string_new (NULL);
-        gchar *substr;
         gint i = g_utf8_strlen (text, -1) - 1;
+        if (i < 0)
+                return NULL;
+        
+        GString *spaces = g_string_new (NULL);
+        gchar *substr;              
         while (1) {
                 substr = g_utf8_substring (text, i--, i+1);
                 if (g_str_equal (substr, " ")
@@ -46,15 +49,17 @@ m5_input_search_and_replace (M5Token *t, M5Token *r)
 
         gchar **splited_text = g_strsplit (text->str, a, 0);
         GString *new_text = g_string_new (NULL);
+
+        if (r->head_spaces) {
+                g_error ("One macro should not be used multi-times!\n");
+        }
         
         gint i;
         for (i = 0; splited_text[i] != NULL; i++) {
                 if (splited_text[i+1] != NULL) {
                         g_string_append (new_text, splited_text[i]);
                         g_string_append (new_text, b);
-                        if (!r->head_spaces) {
-                                r->head_spaces = m5_get_tail_spaces (splited_text[i]);
-                        }
+                        r->head_spaces = m5_get_tail_spaces (splited_text[i]);
                 } else {
                         g_string_append (new_text, splited_text[i]);
                 }
@@ -116,7 +121,7 @@ m5_parser_status (GString *cache,
                 } else if (g_str_equal (last_char, ">")) {
                         new_status = M5_END_MACRO;
                 } else {
-                        new_status = M5_NON_MACRO;
+                        new_status = history_status;
                 }
                 break;
         case M5_PREPEND_OPERATOR:
