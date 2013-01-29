@@ -10,14 +10,19 @@ output_m5 (gpointer data, gpointer userdata)
         g_print ("dnl \\_{%s}\n", token->name->str);
         g_print ("define(%s,\n", token->signature->str);
 
-        if (token->head_spaces) {
+        if (token->padding) {
                 g_print ("@[");
                 gchar **s = g_strsplit (token->content->str, "\n", 0);
                 for (gint i = 0; s[i] != NULL; i++) {
                         if (i == 0) {
-                                g_print ("%s\n", s[i]);
+                                g_print ("%s%s\n", s[i], token->padding->right->str);
+                        } else if (s[i+1] != NULL) {
+                                g_print ("%s%s%s\n",
+                                         token->padding->left->str,
+                                         s[i],
+                                         token->padding->right->str);
                         } else {
-                                g_print ("%s%s\n", token->head_spaces->str, s[i]);
+                                g_print ("%s%s", token->padding->left->str, s[i]);
                         }
                 }
                 g_print ("]@)\n\n");

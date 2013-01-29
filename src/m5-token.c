@@ -9,7 +9,7 @@ m5_token_alloc (void)
         token->content = NULL;
         token->signature = g_string_new ("M5_");
         token->merge_type = M5_MACRO_APPENDED;
-        token->head_spaces = NULL;
+        token->padding = NULL;
         
         return token;
 }
@@ -23,6 +23,11 @@ m5_token_free (M5Token *token)
                 g_string_free (token->signature, TRUE);
         if (token->content)
                 g_string_free (token->content, TRUE);
+        if (token->padding) {
+                g_string_free (token->padding->left, TRUE);
+                g_string_free (token->padding->right, TRUE);
+                g_slice_free (M5MacroPadding, token->padding);
+        }
 
         g_slice_free (M5Token, token);
 }

@@ -8,11 +8,18 @@ typedef enum {
         M5_MACRO_PREPENDED
 } M5MacroMergeType;
 
+typedef struct _M5MacroPadding M5MacroPadding;
+struct _M5MacroPadding {
+        GString *left;
+        GString *right;
+};
+
 typedef struct _M5Token M5Token;
 struct _M5Token {
         GString *signature;
         GString *name;
         GString *content;
+        M5MacroPadding *padding;
         GString *head_spaces;
         M5MacroMergeType merge_type;
 };

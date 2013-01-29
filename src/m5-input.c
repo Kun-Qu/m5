@@ -215,13 +215,12 @@ build_macro_token (gpointer data, gpointer user_data)
         GString *text = content->data;
 
         if (content->type == M5_NON_MACRO_TEXT) {
-                g_string_overwrite (text,  0, g_strstrip (text->str));
+                g_string_overwrite (text,  0, text->str);
         } else {
                 token = m5_token_alloc ();
-                GRegex *macro_re = g_regex_new ("(\\\\_[\\Q^\\E]*\\{.*\\})"
-                                                "\\s*[\\r\\n]*\\+=[\\r\\n]*\\s*"
-                                                "(.*)[\\r\\n]*"
-                                                "@>",
+                GRegex *macro_re = g_regex_new ("(\\Q\\_\\E[\\Q^\\E]?\\{.*\\})"
+                                                " *\\+= *[\r\n]*(.*)"
+                                                "[\r\n]@>$",
                                                 G_REGEX_DOTALL, 0, NULL);
                 gchar **splited_text = g_regex_split (macro_re, text->str, 0);
                 g_regex_unref (macro_re);
@@ -229,12 +228,12 @@ build_macro_token (gpointer data, gpointer user_data)
                         if (strlen (splited_text[i]) > 0) {
                                 index[j++] = i;
                                 if (j > 2) {
-                                        g_error ("building macro error!\n");
+                                        g_error ("building macro token error!\n");
                                 }
                         }
                 }
                 /* 剥除宏名的外衣 */
-                GRegex *macro_name_re = g_regex_new ("\\\\_([\\Q^\\E]*)\\{\\s*(.*)\\s*\\}",
+                GRegex *macro_name_re = g_regex_new ("\\Q_\\E([\\Q^\\E]*)\\{\\s*(.*)\\s*\\}",
                                                      G_REGEX_DOTALL, 0, NULL);
                 gchar **splited_macro_name = g_regex_split (macro_name_re, splited_text[index[0]], 0);
                 g_regex_unref (macro_name_re);
@@ -247,10 +246,9 @@ build_macro_token (gpointer data, gpointer user_data)
                 }
                 g_strfreev (splited_macro_name);
                 
-                /* 宏的内容需要掐头去尾 */
-                gchar *stripped_text = g_strstrip (splited_text[index[1]]);
-                token->content = g_string_new (stripped_text);
-                splited_text[index[1]] = stripped_text;
+                /* 宏的内容 */
+                splited_text[index[1]] = g_strchomp (splited_text[index[1]]);
+                token->content = g_string_new (splited_text[index[1]]);
 
                 /* 释放用来产生 M5Token 数据的文本 */
                 g_string_free (content->data, TRUE);
@@ -320,12 +318,28 @@ m5_input_merge_same_macro (GList *contents)
 }
 
 static GString *
+m5_get_head_spaces (gchar *text)
+{
+        GString *spaces = g_string_new (NULL);
+        gchar *substr = NULL;
+        gint i = 0;
+        while (1) {
+                substr = g_utf8_substring (text, i++, i+1);
+                if (g_str_equal (substr, " ")
+                    || g_str_equal (substr, "\t")) {
+                        g_string_append (spaces, substr);
+                        g_free (substr);
+                } else {
+                        break;
+                }
+        }
+        return spaces;
+}
+
+static GString *
 m5_get_tail_spaces (gchar *text)
 {
         gint i = g_utf8_strlen (text, -1) - 1;
-        if (i < 0)
-                return NULL;
-        
         GString *spaces = g_string_new (NULL);
         gchar *substr;              
         while (1) {
@@ -341,7 +355,28 @@ m5_get_tail_spaces (gchar *text)
         return spaces;
 }
 
-
+static gboolean
+m5_input_is_left_leading_parenthesis (gchar *text)
+{
+        gboolean r = TRUE;
+        gchar *substr = NULL;
+        gint i = 0;
+        while (1) {
+                substr = g_utf8_substring (text, i++, i+1);
+                if (g_str_equal (substr, " ")
+                    || g_str_equal (substr, "\t")) {
+                        continue;
+                } else if (g_str_equal (substr, "(")) {
+                        break;
+                } else {
+                        r = FALSE;
+                        break;
+                }
+                g_free (substr);
+        }
+        
+        return r;
+}
 
 static GString *
 m5_input_search_and_replace (M5Token *t, M5Token *r)
@@ -350,36 +385,39 @@ m5_input_search_and_replace (M5Token *t, M5Token *r)
 
         gchar *a = r->name->str;
         gchar *b = r->signature->str;
-
+        
         gchar **splited_text = g_strsplit (text->str, a, 0);
         GString *new_text = g_string_new (NULL);
 
-        if (r->head_spaces) {
-                g_error ("One macro should not be used multi-times!\n");
-        }
-        
         gint i;
-        for (i = 0; splited_text[i] != NULL; i++) {
-                if (splited_text[i+1] != NULL) {
-                        g_string_append (new_text, splited_text[i]);
-                        g_string_append (new_text, b);
-                        r->head_spaces = m5_get_tail_spaces (splited_text[i]);
-                } else {
-                        /* 有可能会是带参数的宏，m5 允许宏名与左括号之间有空格，
-                           而 m4 不允许，所以要删除左括号前的空格 */
-                        splited_text[i] =  g_strchug (splited_text[i]);
-                        g_string_append (new_text, splited_text[i]);
+        for (i = 0; splited_text[i] != NULL; i++);
+        if (i == 1) {
+                return NULL;
+        } else if (i > 2) {
+                g_error ("one macro can not be used twice in the same macro!\n");
+        } else {
+                g_string_append (new_text, splited_text[0]);
+                g_string_append (new_text, b);
+
+                if (r->padding) {
+                        g_error ("One macro should not be used multi-times!\n");
                 }
+                r->padding = g_slice_new (M5MacroPadding);
+                r->padding->left = m5_get_tail_spaces (splited_text[0]);
+
+                /* 有可能会是带参数的宏，m5 允许宏名与左括号之间有空格，
+                   而 m4 不允许，所以要删除左括号前的空格 */
+                if (m5_input_is_left_leading_parenthesis (splited_text[1])) {
+                        splited_text[1] =  g_strchug (splited_text[1]);
+                        r->padding->right = g_string_new (NULL);
+                } else {
+                        r->padding->right = m5_get_head_spaces (splited_text[1]);
+                }
+                g_string_append (new_text, splited_text[1]);
         }
-        
         g_strfreev (splited_text);
         
-        if (i == 1)
-                return NULL;
-        else if (i > 2)
-                g_error ("one macro can not be used twice in the same macro!\n");
-        else
-                return new_text;
+        return new_text;
 }
 
 static void
