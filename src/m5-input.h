@@ -5,7 +5,6 @@
 
 typedef enum {
         M5_NON_MACRO_TEXT,
-        M5_MACRO_TEXT,
         M5_MACRO_TOKEN
 } M5ContentType;
 

@@ -32,7 +32,7 @@ output_root (gpointer data, gpointer userdata)
 {
         M5Token *token = data;
         if (g_str_equal (token->name->str, "*")) {
-                 g_print ("%s", token->signature->str);
+                 g_print ("%s\n", token->signature->str);
         }
 }
 

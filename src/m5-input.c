@@ -122,7 +122,7 @@ m5_parser_status (GString *cache,
 }
 
 static M5Content *
-m5_input_create_macro_according_head (GString *cache, gchar *head)
+m5_input_take_non_macro_text (GString *cache, gchar *head)
 {
         M5Content *content = NULL;
         glong cache_len = g_utf8_strlen (cache->str, -1);
@@ -147,7 +147,6 @@ m5_input_create_macro_according_head (GString *cache, gchar *head)
         
         return content;
 }
-
 
 GList *
 m5_input_split (gchar *filename)
@@ -175,15 +174,15 @@ m5_input_split (gchar *filename)
                         }
                         /* 分离宏文本与非宏文本 */
                         if (m == M5_BEGIN_MACRO) {
-                                content = m5_input_create_macro_according_head (cache, "\\_{");
+                                content = m5_input_take_non_macro_text (cache, "\\_{");
                                 if (!content) {
-                                        content = m5_input_create_macro_according_head (cache, "\\_^{");
+                                        content = m5_input_take_non_macro_text (cache, "\\_^{");
                                 }
                                 if (content)
                                         contents = g_list_prepend (contents, content);
                         } else if (m == M5_END_MACRO) {/* 分离宏文本 */
                                 content = g_slice_new (M5Content);
-                                content->type = M5_MACRO_TEXT;
+                                content->type = M5_MACRO_TOKEN;
                                 content->data = g_string_new (cache->str);
                                 contents = g_list_prepend (contents, content);  
                                 g_string_free (cache, TRUE);
@@ -192,13 +191,12 @@ m5_input_split (gchar *filename)
                 }
         } while (status == G_IO_STATUS_NORMAL);
 
-        /* 可能会有非宏文本残余在 cache 中 */
+        /* 可能会有非宏文本残余在 cache 中，将它直接转化为非宏文本结点 */
         if (0 < g_utf8_strlen (cache->str, -1)) {
                 content = g_slice_new (M5Content);
                 content->type = M5_NON_MACRO_TEXT;
-                content->data = g_string_new (cache->str);
+                content->data = cache;
                 contents = g_list_prepend (contents, content);
-                g_string_free (cache, FALSE);
         }
         
         g_io_channel_unref (channel);
@@ -253,10 +251,11 @@ build_macro_token (gpointer data, gpointer user_data)
                 gchar *stripped_text = g_strstrip (splited_text[index[1]]);
                 token->content = g_string_new (stripped_text);
                 splited_text[index[1]] = stripped_text;
-                
+
+                /* 释放用来产生 M5Token 数据的文本 */
                 g_string_free (content->data, TRUE);
-                
-                content->type = M5_MACRO_TOKEN;
+
+                /* 将 M5Token 数据插入至列表中 */
                 content->data = token;
                 
                 g_strfreev (splited_text);
