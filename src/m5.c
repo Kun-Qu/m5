@@ -7,29 +7,9 @@ static void
 output_m5 (gpointer data, gpointer userdata)
 {
         M5Token *token = data;
-        g_print ("dnl \\_{%s}\n", token->name->str);
-        g_print ("define(%s,\n", token->signature->str);
-
-        if (token->padding) {
-                g_print ("@[");
-                gchar **s = g_strsplit (token->content->str, "\n", 0);
-                for (gint i = 0; s[i] != NULL; i++) {
-                        if (i == 0) {
-                                g_print ("%s%s\n", s[i], token->padding->right->str);
-                        } else if (s[i+1] != NULL) {
-                                g_print ("%s%s%s\n",
-                                         token->padding->left->str,
-                                         s[i],
-                                         token->padding->right->str);
-                        } else {
-                                g_print ("%s%s", token->padding->left->str, s[i]);
-                        }
-                }
-                g_print ("]@)\n\n");
-                g_strfreev (s);
-        } else {
-                g_print ("@[%s]@)\n\n", token->content->str);
-        }
+        
+        g_print ("define(`%s',\n", token->name->str);
+        g_print ("`%s')\n\n", token->content->str);
 }
 
 static void
@@ -37,7 +17,7 @@ output_root (gpointer data, gpointer userdata)
 {
         M5Token *token = data;
         if (g_str_equal (token->name->str, "*")) {
-                 g_print ("%s\n", token->signature->str);
+                g_print ("indir(`*')\n");
         }
 }
 
@@ -53,7 +33,22 @@ main (int argc, char **argv)
         GList *contents =  m5_input_split (argv[1]);
         GList *macro_set = m5_input_build_macro_set (contents);
 
-        g_print ("divert(-1)\nchangequote(@[,]@)dnl\n\n");
+        g_print ("divert(-1)\n");
+        g_print ("changecom(`尼玛，我是灰常奇葩的注释符！')\n"
+                 "define(`m5_index_nl', `index(`$1', `\n"
+                 "')')\n"
+                 "define(`m5_first_line', \n"
+                 "       `define(`pos', `m5_index_nl(`$2')')'`$1'`substr(`$2', 0, pos)'`$3\n"
+                 "')\n"
+                 "define(`m5_tail_text', `substr(`$1', eval(1 + m5_index_nl(`$1')), len(`$1'))')\n"
+                 "define(`m5_add_padding',\n"
+                 "`m5_first_line(`$1', `$2', `$3')dnl\n"
+                 "define(`tail_text', `m5_tail_text(`$2')')dnl\n"
+                 "ifelse(m5_index_nl(tail_text), \n"
+                 "	 -1, \n"
+                 "       `$1'tail_text`$3', \n"
+                 "       `m5_add_padding(`$1', tail_text, `$3')')'dnl\n"
+                 ")\n");
         g_list_foreach (macro_set, output_m5, NULL);
         g_print ("divert(0)dnl\n");
 

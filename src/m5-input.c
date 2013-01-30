@@ -336,6 +336,23 @@ m5_get_head_spaces (gchar *text)
         return spaces;
 }
 
+static void
+m5_string_chug (GString *text)
+{
+         gchar *substr = NULL;
+        gint i = 0;
+        while (1) {
+                substr = g_utf8_substring (text->str, i++, i+1);
+                if (g_str_equal (substr, " ")
+                    || g_str_equal (substr, "\t")) {
+                        g_string_erase (text, 0, strlen (substr));
+                        g_free (substr);
+                } else {
+                        break;
+                }
+        }
+}
+
 static GString *
 m5_get_tail_spaces (gchar *text)
 {
@@ -353,6 +370,24 @@ m5_get_tail_spaces (gchar *text)
                 }
         }
         return spaces;
+}
+
+static void
+m5_string_chomp (GString *text)
+{
+        gint i = g_utf8_strlen (text->str, -1) - 1;
+        GString *spaces = g_string_new (NULL);
+        gchar *substr;              
+        while (1) {
+                substr = g_utf8_substring (text->str, i--, i+1);
+                if (g_str_equal (substr, " ")
+                    || g_str_equal (substr, "\t")) {
+                        g_string_erase (text, text->len - 1, strlen (substr));
+                        g_free (substr);
+                } else {
+                        break;
+                }
+        }
 }
 
 static gboolean
@@ -379,61 +414,90 @@ m5_input_is_left_leading_parenthesis (gchar *text)
 }
 
 static GString *
-m5_input_search_and_replace (M5Token *t, M5Token *r)
-{
-        GString *text = t->content;
-
-        gchar *a = r->name->str;
-        gchar *b = r->signature->str;
+m5_input_fix_macro_definition (M5Token *t, M5Token *r)
+{       
+        GString *new_definition = g_string_new (NULL);
+        gchar **splited_text = g_strsplit (t->content->str, r->name->str, 0);
+        GList *text_list = NULL;
         
-        gchar **splited_text = g_strsplit (text->str, a, 0);
-        GString *new_text = g_string_new (NULL);
-
-        gint i;
-        for (i = 0; splited_text[i] != NULL; i++);
-        if (i == 1) {
-                return NULL;
-        } else if (i > 2) {
-                g_error ("one macro can not be used twice in the same macro!\n");
-        } else {
-                g_string_append (new_text, splited_text[0]);
-                g_string_append (new_text, b);
-
-                if (r->padding) {
-                        g_error ("One macro should not be used multi-times!\n");
-                }
-                r->padding = g_slice_new (M5MacroPadding);
-                r->padding->left = m5_get_tail_spaces (splited_text[0]);
-
-                /* 有可能会是带参数的宏，m5 允许宏名与左括号之间有空格，
-                   而 m4 不允许，所以要删除左括号前的空格 */
-                if (m5_input_is_left_leading_parenthesis (splited_text[1])) {
-                        splited_text[1] =  g_strchug (splited_text[1]);
-                        r->padding->right = g_string_new (NULL);
-                } else {
-                        r->padding->right = m5_get_head_spaces (splited_text[1]);
-                }
-                g_string_append (new_text, splited_text[1]);
+        for (gint i = 0; splited_text[i] != NULL; i++) {
+                text_list = g_list_prepend (text_list, g_string_new (splited_text[i]));
         }
         g_strfreev (splited_text);
         
-        return new_text;
-}
+        if (g_list_length (text_list) <= 1) {
+                return NULL;
+        }
 
-static void
-generate_signature (gpointer data, gpointer userdata)
-{
-        M5Token *t = data;
-        m5_token_macro_signature (t);
+        /* 向 text_list 结点之间插入 r 中的宏名，得到 new_text_list */
+        GList *new_text_list = NULL;
+        GList *last_node = g_list_last (text_list);
+        for (GList *it = g_list_first (text_list);
+             it != NULL;
+             it = g_list_next (it)) {
+                new_text_list = g_list_prepend (new_text_list, it->data);
+                if (it != last_node) {
+                        new_text_list = g_list_prepend (new_text_list,
+                                                        g_string_new (r->name->str));
+                }
+        }
+        g_list_free (text_list);
+
+        /* 产生 padding 与 indir 宏封装*/
+        gint indicator = 0;
+        GString *text = NULL;
+        M5MacroPadding *padding = NULL;
+        
+        for (GList *it = g_list_first (new_text_list);
+             it != NULL;
+             it = g_list_next (g_list_next (it))) {
+                text = it->data;
+                if ((++indicator) % 2 != 0) {/* 左 padding */
+                        padding = g_slice_new (M5MacroPadding);
+                        padding->left = m5_get_tail_spaces (text->str);
+                        m5_string_chomp (text);
+                } else {/* 右 padding */
+                        GString *macro_name = (g_list_previous (it))->data;
+                        if (m5_input_is_left_leading_parenthesis (text->str)) {
+                                /* 情况较为复杂，暂时不予处理，需要用栈结构识别宏参数列表的右括号 */
+                        } else {
+                                padding->right = m5_get_head_spaces (text->str);
+                                m5_string_chug (text);
+
+                                /* 产生 indir */
+                                GString *m5_add_padding = g_string_new (NULL);
+                                g_string_printf (m5_add_padding,
+                                                 "m5_add_padding(`%s',indir(`%s'),`%s')",
+                                                 padding->left->str,
+                                                 macro_name->str,
+                                                 padding->right->str);
+                                g_string_free (macro_name, TRUE);
+                                (g_list_previous (it))->data = m5_add_padding;
+                        }
+                        g_slice_free (M5MacroPadding, padding);
+                }
+        }
+
+        /* 输出调整后的宏定义 */
+        for (GList *it = g_list_first (new_text_list);
+             it != NULL;
+             it = g_list_next (it)) {
+                text = it->data;
+                g_string_append (new_definition, text->str);
+                g_string_free (text, TRUE);
+        }
+
+        g_list_free (new_text_list);
+        
+        return new_definition;
 }
 
 GList *
 m5_input_build_macro_set (GList *contents)
 {
+        GList *macro_set = NULL;
         g_list_foreach (contents, build_macro_token, NULL);
-        
-        GList *macro_set = m5_input_merge_same_macro (contents);
-        g_list_foreach (macro_set, generate_signature, NULL);
+        macro_set = m5_input_merge_same_macro (contents);
         
         GString *new_macro_content = NULL;
         M5Token *t1, *t2;
@@ -448,7 +512,7 @@ m5_input_build_macro_set (GList *contents)
                      it_j != NULL;
                      it_j = g_list_next (it_j)) {
                         t2 = it_j->data;
-                        new_macro_content = m5_input_search_and_replace (t2, t1);
+                        new_macro_content = m5_input_fix_macro_definition (t2, t1);
                         if (new_macro_content) {
                                 g_string_free (t2->content, TRUE);
                                 t2->content = new_macro_content;
