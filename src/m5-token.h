@@ -16,10 +16,8 @@ struct _M5MacroPadding {
 
 typedef struct _M5Token M5Token;
 struct _M5Token {
-        GString *signature;
         GString *name;
         GString *content;
-        GList *padding_list;
         M5MacroMergeType merge_type;
 };
 
