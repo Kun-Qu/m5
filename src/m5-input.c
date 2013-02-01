@@ -521,7 +521,11 @@ m5_input_fix_macro_definition (M5Token *t, M5Token *r)
                                                          arg_list->str);
                                 } else {
                                         g_string_printf (m5_add_padding,
-                                                         "m5_add_padding(`%s',indir(`%s',%s),`%s')",
+                                                         "patsubst("
+                                                         "m5_add_padding(`%s',"
+                                                         "patsubst(indir(`%s', %s),`,',`@_@'),"
+                                                         "`%s'),"
+                                                         "`@_@', `,')",
                                                          padding->left->str,
                                                          macro_name->str,
                                                          arg_list->str,
