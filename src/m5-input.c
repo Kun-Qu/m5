@@ -339,10 +339,9 @@ m5_get_head_spaces (gchar *text)
 static void
 m5_string_chug (GString *text)
 {
-         gchar *substr = NULL;
-        gint i = 0;
+        gchar *substr = NULL;
         while (1) {
-                substr = g_utf8_substring (text->str, i++, i+1);
+                substr = g_utf8_substring (text->str, 0, 1);
                 if (g_str_equal (substr, " ")
                     || g_str_equal (substr, "\t")) {
                         g_string_erase (text, 0, strlen (substr));
@@ -375,11 +374,12 @@ m5_get_tail_spaces (gchar *text)
 static void
 m5_string_chomp (GString *text)
 {
-        gint i = g_utf8_strlen (text->str, -1) - 1;
         GString *spaces = g_string_new (NULL);
-        gchar *substr;              
+        gchar *substr = NULL;
+        gint i = 0;
         while (1) {
-                substr = g_utf8_substring (text->str, i--, i+1);
+                i = g_utf8_strlen (text->str, -1) - 1;
+                substr = g_utf8_substring (text->str, i, i+1);
                 if (g_str_equal (substr, " ")
                     || g_str_equal (substr, "\t")) {
                         g_string_erase (text, text->len - 1, strlen (substr));
@@ -391,7 +391,7 @@ m5_string_chomp (GString *text)
 }
 
 static gboolean
-m5_input_is_left_leading_parenthesis (gchar *text)
+m5_is_left_leading_parenthesis (gchar *text)
 {
         gboolean r = TRUE;
         gchar *substr = NULL;
@@ -411,6 +411,39 @@ m5_input_is_left_leading_parenthesis (gchar *text)
         }
         
         return r;
+}
+
+static GString *
+m5_take_arg_list (GString *text) 
+{
+        GString *arg_list = g_string_new (NULL);
+        gchar *substr = NULL;
+        gint i = 0;
+        gint arg_list_end = 0;
+        
+        /* 计算去除 text 的前导空格与制表符的 text 长度，
+         之所以要去除前导空白字符，是为了保证 text 的第一个字符是 "("*/
+        m5_string_chug (text);
+        glong len = g_utf8_strlen (text->str, -1);
+        
+        while (1) {
+                substr = g_utf8_substring (text->str, i++, i+1);
+                g_string_append (arg_list, substr);
+                if (g_str_equal (substr, "(")) {
+                        arg_list_end ++;
+                } else if (g_str_equal (substr, ")")) {
+                        arg_list_end --;
+                }
+                g_free (substr);
+                if (arg_list_end == 0) {
+                        break;
+                }
+                if (i == len) {
+                        g_error ("There is no terminator of macro argument list!\n");
+                }
+        }
+
+        return arg_list;
 }
 
 static GString *
@@ -444,36 +477,81 @@ m5_input_fix_macro_definition (M5Token *t, M5Token *r)
         g_list_free (text_list);
 
         /* 产生 padding 与 indir 宏封装*/
-        gint indicator = 0;
         GString *text = NULL;
         M5MacroPadding *padding = NULL;
         
         for (GList *it = g_list_first (new_text_list);
              it != NULL;
              it = g_list_next (g_list_next (it))) {
-                text = it->data;
-                if ((++indicator) % 2 != 0) {/* 左 padding */
+                if (it != g_list_first (new_text_list)) {
+                        /* 左 padding */
+                        text = (g_list_previous(g_list_previous(it)))->data;
                         padding = g_slice_new (M5MacroPadding);
                         padding->left = m5_get_tail_spaces (text->str);
                         m5_string_chomp (text);
-                } else {/* 右 padding */
+                        
+                        /* 右 padding */
+                        text = it->data;
                         GString *macro_name = (g_list_previous (it))->data;
-                        if (m5_input_is_left_leading_parenthesis (text->str)) {
-                                /* 情况较为复杂，暂时不予处理，需要用栈结构识别宏参数列表的右括号 */
+                        GString *m5_add_padding = g_string_new (NULL);
+                        if (m5_is_left_leading_parenthesis (text->str)) {
+                                /* 处理带参数的宏 */
+                                 GString *arg_list = m5_take_arg_list (text);
+                                if (arg_list->len == 0)
+                                        g_error ("Parsing argument list of macro fails!\n");
+
+                                /* 将 text 的中包含的参数列表子字串删除 */
+                                g_string_erase (text, 0, arg_list->len);
+                                
+                                padding->right = m5_get_head_spaces (text->str);
+                                m5_string_chug (text);
+                                
+                                /* 迎合 indir 的语法，将参数列表的括号删除 */
+                                g_string_erase (arg_list, 0, strlen ("("));
+                                g_string_erase (arg_list,
+                                                strlen (arg_list->str) - 1,
+                                                strlen (")"));
+                                
+                                /* 产生 indir */
+                                if (g_utf8_strlen (padding->left->str, -1) == 0
+                                    && g_utf8_strlen (padding->right->str, -1) == 0) {
+                                        g_string_printf (m5_add_padding,
+                                                         "indir(`%s',%s)",
+                                                         macro_name->str,
+                                                         arg_list->str);
+                                } else {
+                                        g_string_printf (m5_add_padding,
+                                                         "m5_add_padding(`%s',indir(`%s',%s),`%s')",
+                                                         padding->left->str,
+                                                         macro_name->str,
+                                                         arg_list->str,
+                                                         padding->right->str);
+                                }
                         } else {
                                 padding->right = m5_get_head_spaces (text->str);
                                 m5_string_chug (text);
 
                                 /* 产生 indir */
-                                GString *m5_add_padding = g_string_new (NULL);
-                                g_string_printf (m5_add_padding,
-                                                 "m5_add_padding(`%s',indir(`%s'),`%s')",
-                                                 padding->left->str,
-                                                 macro_name->str,
-                                                 padding->right->str);
-                                g_string_free (macro_name, TRUE);
-                                (g_list_previous (it))->data = m5_add_padding;
+                                if (g_utf8_strlen (padding->left->str, -1) == 0
+                                    && g_utf8_strlen (padding->right->str, -1) == 0) {
+                                        g_string_printf (m5_add_padding,
+                                                         "indir(`%s')", macro_name->str);
+                                } else {/* 包含逗号的代码会导致 m5_add_padding 失败，
+                                         *  所以事先与事后需要用 patsubst 进行符号替换，将逗号替换
+                                         * 为 `@_@'，可爱的眼睛！*/
+                                        g_string_printf (m5_add_padding,
+                                                         "patsubst("
+                                                         "m5_add_padding(`%s',"
+                                                         "patsubst(indir(`%s'),`,',`@_@'),"
+                                                         "`%s'),"
+                                                         "`@_@', `,')",
+                                                         padding->left->str,
+                                                         macro_name->str,
+                                                         padding->right->str);
+                                }
                         }
+                        (g_list_previous (it))->data = m5_add_padding;
+                        g_string_free (macro_name, TRUE);
                         g_slice_free (M5MacroPadding, padding);
                 }
         }
