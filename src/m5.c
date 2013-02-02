@@ -33,24 +33,7 @@ main (int argc, char **argv)
         GList *macro_set = m5_input_build_macro_set (contents);
 
         g_print ("divert(-1)\n");
-        g_print ("changecom(`尼玛，我是灰常奇葩的注释符！')\n"
-                 "define(`m5_index_nl', `index(`$1', `\n"
-                 "')')\n"
-                 "\n"
-                 "define(`m5_first_line',\n"
-                 "       `pushdef(`pos', `m5_index_nl(`$2')')'`$1'`substr(`$2', 0, pos)'`$3\n"
-                 "popdef(`pos')')\n"
-                 "\n"
-                 "define(`m5_tail_text', `substr(`$1', eval(1 + m5_index_nl(`$1')), len(`$1'))')\n"
-                 "\n"
-                 "define(`m5_add_padding',\n"
-                 "`m5_first_line(`$1', `$2', `$3')dnl\n"
-                 "pushdef(`tail_text', `m5_tail_text(`$2')')dnl\n"
-                 "ifelse(m5_index_nl(tail_text),\n"
-                 "       -1,\n"
-                 "       `$1'tail_text`$3',\n"
-                 "       `m5_add_padding(`$1', tail_text, `$3')')`'popdef(`tail_text')'dnl\n"
-                 ")\n");
+        g_print ("changecom(`尼玛，我是灰常奇葩的注释符！')\n\n");
         g_list_foreach (macro_set, output_m5, NULL);
         g_print ("divert(0)dnl\n");
 

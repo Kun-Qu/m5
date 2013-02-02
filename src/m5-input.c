@@ -488,7 +488,6 @@ m5_input_fix_macro_definition (M5Token *t, M5Token *r)
                         text = (g_list_previous(g_list_previous(it)))->data;
                         padding = g_slice_new (M5MacroPadding);
                         padding->left = m5_get_tail_spaces (text->str);
-                        m5_string_chomp (text);
                         
                         /* 右 padding */
                         text = it->data;
@@ -504,7 +503,6 @@ m5_input_fix_macro_definition (M5Token *t, M5Token *r)
                                 g_string_erase (text, 0, arg_list->len);
                                 
                                 padding->right = m5_get_head_spaces (text->str);
-                                m5_string_chug (text);
                                 
                                 /* 迎合 indir 的语法，将参数列表的括号删除 */
                                 g_string_erase (arg_list, 0, strlen ("("));
@@ -521,37 +519,26 @@ m5_input_fix_macro_definition (M5Token *t, M5Token *r)
                                                          arg_list->str);
                                 } else {
                                         g_string_printf (m5_add_padding,
-                                                         "patsubst("
-                                                         "m5_add_padding(`%s',"
-                                                         "patsubst(indir(`%s', %s),`,',`@_@'),"
-                                                         "`%s'),"
-                                                         "`@_@', `,')",
-                                                         padding->left->str,
+                                                         "patsubst(indir(`%s', %s),`\n',`%s\n%s')",
                                                          macro_name->str,
                                                          arg_list->str,
-                                                         padding->right->str);
+                                                         padding->right->str,
+                                                         padding->left->str);
                                 }
                         } else {
                                 padding->right = m5_get_head_spaces (text->str);
-                                m5_string_chug (text);
 
                                 /* 产生 indir */
                                 if (g_utf8_strlen (padding->left->str, -1) == 0
                                     && g_utf8_strlen (padding->right->str, -1) == 0) {
                                         g_string_printf (m5_add_padding,
                                                          "indir(`%s')", macro_name->str);
-                                } else {/* 包含逗号的代码会导致 m5_add_padding 失败，
-                                         *  所以事先与事后需要用 patsubst 进行符号替换，将逗号替换
-                                         * 为 `@_@'，可爱的眼睛！*/
+                                } else {
                                         g_string_printf (m5_add_padding,
-                                                         "patsubst("
-                                                         "m5_add_padding(`%s',"
-                                                         "patsubst(indir(`%s'),`,',`@_@'),"
-                                                         "`%s'),"
-                                                         "`@_@', `,')",
-                                                         padding->left->str,
+                                                         "patsubst(indir(`%s'),`\n',`%s\n%s')",
                                                          macro_name->str,
-                                                         padding->right->str);
+                                                         padding->right->str,
+                                                         padding->left->str);
                                 }
                         }
                         (g_list_previous (it))->data = m5_add_padding;
