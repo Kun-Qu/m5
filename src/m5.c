@@ -25,11 +25,12 @@ main (int argc, char **argv)
 {
         setlocale(LC_CTYPE, "");
 
-        if (argc != 2) {
-                g_error ("you should specify m5 file name!\n");
-        }
-        
-        GList *contents =  m5_input_split (argv[1]);
+        GList *contents = NULL;
+        if (argc == 1) {
+                contents =  m5_input_split (NULL);
+        } else {
+                contents =  m5_input_split (argv[1]);
+        } 
         GList *macro_set = m5_input_build_macro_set (contents);
 
         g_print ("divert(-1)\n");

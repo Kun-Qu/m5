@@ -95,8 +95,8 @@ m5_parser_status (GString *cache,
                 break;
         case M5_IN_ESCAPE:
                 if (g_str_equal (last_char, "}")) {
-                        gchar *t = g_utf8_offset_to_pointer (cache->str, offset - 2);
-                        if (g_str_equal (t, "\\@}")) {
+                        gchar *t = g_utf8_offset_to_pointer (cache->str, offset - 1);
+                        if (g_str_equal (t, "@}")) {
                                 new_status = M5_END_ESCAPE;
                         } else {
                                 new_status = M5_IN_ESCAPE;
@@ -151,7 +151,11 @@ m5_input_take_non_macro_text (GString *cache, gchar *head)
 GList *
 m5_input_split (gchar *filename)
 {
-        GIOChannel *channel = g_io_channel_new_file (filename, "r", NULL);
+        GIOChannel *channel = NULL;
+        if (filename)
+                g_io_channel_new_file (filename, "r", NULL);
+        else 
+                channel = g_io_channel_unix_new (0);
         GIOStatus status;
 
         GList *contents = NULL;
@@ -187,6 +191,13 @@ m5_input_split (gchar *filename)
                                 contents = g_list_prepend (contents, content);  
                                 g_string_free (cache, TRUE);
                                 cache = g_string_new (NULL);
+                        } else if (m == M5_BEGIN_ESCAPE || m == M5_END_ESCAPE) {/* 遭遇逃逸字串 */
+                                /* 删除 cache 末尾的 @{ 或 @}字符 */
+                                glong length = g_utf8_strlen (cache->str, -1);
+                                gchar *escape_chars = g_utf8_substring (cache->str, length - 2, length);
+                                gsize offset = strlen (escape_chars);
+                                g_string_erase (cache, cache->len - offset, offset);
+                                g_free (escape_chars);
                         }
                 }
         } while (status == G_IO_STATUS_NORMAL);
