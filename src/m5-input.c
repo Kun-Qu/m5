@@ -153,7 +153,7 @@ m5_input_split (gchar *filename)
 {
         GIOChannel *channel = NULL;
         if (filename)
-                g_io_channel_new_file (filename, "r", NULL);
+                channel = g_io_channel_new_file (filename, "r", NULL);
         else 
                 channel = g_io_channel_unix_new (0);
         GIOStatus status;
@@ -231,7 +231,7 @@ build_macro_token (gpointer data, gpointer user_data)
                 token = m5_token_alloc ();
                 GRegex *macro_re = g_regex_new ("(\\Q\\_\\E[\\Q^\\E]?\\{.*\\})"
                                                 " *\\+= *[\r\n]*(.*)"
-                                                "[\r\n]@>$",
+                                                "[\r\n]*@>$",
                                                 G_REGEX_DOTALL, 0, NULL);
                 gchar **splited_text = g_regex_split (macro_re, text->str, 0);
                 g_regex_unref (macro_re);

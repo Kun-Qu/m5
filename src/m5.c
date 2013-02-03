@@ -30,11 +30,12 @@ main (int argc, char **argv)
                 contents =  m5_input_split (NULL);
         } else {
                 contents =  m5_input_split (argv[1]);
-        } 
+        }
+        
         GList *macro_set = m5_input_build_macro_set (contents);
 
         g_print ("divert(-1)\n");
-        g_print ("changecom(`尼玛，我是灰常奇葩的注释符！')\n\n");
+        g_print ("changecom(`/* 我是灰常奇葩的注释符 */')\n\n");
         g_list_foreach (macro_set, output_m5, NULL);
         g_print ("divert(0)dnl\n");
 
