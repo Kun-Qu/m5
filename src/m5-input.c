@@ -17,6 +17,24 @@ typedef enum {
         M5_END_ESCAPE
 } M5InputStatus;
 
+gchar *
+g_utf8_substring (const gchar *str,
+                  glong        start_pos,
+                  glong        end_pos)
+{
+  gchar *start, *end, *out;
+
+  start = g_utf8_offset_to_pointer (str, start_pos);
+  end = g_utf8_offset_to_pointer (start, end_pos - start_pos);
+
+  out = g_malloc (end - start + 1);
+  memcpy (out, start, end - start);
+  out[end - start] = 0;
+
+  return out;
+}
+
+
 static M5InputStatus
 m5_parser_status (GString *cache,
                   M5InputStatus current_status,
